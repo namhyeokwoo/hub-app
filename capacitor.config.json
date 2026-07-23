@@ -2,6 +2,9 @@
   "appId": "com.ska90.hub",
   "appName": "개발 허브",
   "webDir": "www",
+  "server": {
+    "androidScheme": "http"
+  },
   "android": {
     "backgroundColor": "#0f172a"
   }
