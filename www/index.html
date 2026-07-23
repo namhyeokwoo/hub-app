@@ -125,12 +125,31 @@
       flex: 1; min-height: 0; overflow-y: auto;
       padding: 16px;
       padding-bottom: calc(16px + var(--safe-bottom));
-      font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+      font-size: 13px; line-height: 1.6;
     }
+    .detail-body.plain { white-space: pre-wrap; word-break: break-word; }
     .detail-body iframe {
       width: 100%; height: 100%; border: 1px solid var(--border);
       border-radius: 10px; background: #fff; display: block;
     }
+    .detail-body h1 { color: var(--accent); font-size: 18px; margin-bottom: 16px; }
+    .detail-body h2 {
+      color: var(--text); font-size: 15px; font-weight: 700;
+      margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+    }
+    .detail-body h3 { color: var(--amber); font-size: 13px; margin: 14px 0 6px; }
+    .detail-body .table-scroll { overflow-x: auto; margin-bottom: 10px; -webkit-overflow-scrolling: touch; }
+    .detail-body table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .detail-body th {
+      background: var(--surface); color: var(--muted);
+      padding: 5px 8px; font-weight: 700; text-align: left; white-space: nowrap;
+    }
+    .detail-body td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .detail-body ul { margin: 0 0 10px 20px; }
+    .detail-body li { margin-bottom: 4px; }
+    .detail-body p { margin-bottom: 8px; color: var(--muted); }
+    .detail-body strong { color: var(--text); }
+    .detail-body a { color: var(--accent); text-decoration: none; }
   </style>
 </head>
 <body>
@@ -389,35 +408,132 @@
     showScreen("homeScreen");
   });
 
+  function showPlainText(text) {
+    detailBody.classList.add("plain");
+    detailBody.textContent = text;
+  }
+
+  // 최소 마크다운(#/##/###, 표, **bold**, [text](url), -불릿(1단 중첩))
+  // → HTML 변환기. 외부 CDN 없이 오프라인에서도 동작하도록 자체 구현.
+  function mdToHtml(md) {
+    var lines = md.split("\n");
+    var out = [];
+    var i = 0;
+
+    function esc(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function inline(s) {
+      s = esc(s);
+      s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      // DART 보고서명 자체에 "[기재정정]" 같은 대괄호가 흔히 들어있어, 링크 텍스트 안에
+      // 중첩 대괄호가 있을 수 있음 — 그리디 매칭으로 "](url)" 바로 앞의 마지막 ]를 찾는다.
+      s = s.replace(/\[(.*)\]\(([^)]+)\)/, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      return s;
+    }
+    function cells(line) {
+      return line.replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+    }
+
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^###\s+/.test(line)) {
+        out.push("<h3>" + inline(line.replace(/^###\s+/, "")) + "</h3>");
+        i++;
+      } else if (/^##\s+/.test(line)) {
+        out.push("<h2>" + inline(line.replace(/^##\s+/, "")) + "</h2>");
+        i++;
+      } else if (/^#\s+/.test(line)) {
+        out.push("<h1>" + inline(line.replace(/^#\s+/, "")) + "</h1>");
+        i++;
+      } else if (/^\|/.test(line)) {
+        var header = cells(line);
+        i++;
+        if (i < lines.length && /^\|[\s\-:|]+\|?$/.test(lines[i])) i++;
+        var rows = [];
+        while (i < lines.length && /^\|/.test(lines[i])) {
+          rows.push(cells(lines[i]));
+          i++;
+        }
+        var t = '<div class="table-scroll"><table><thead><tr>';
+        header.forEach(function (h) { t += "<th>" + inline(h) + "</th>"; });
+        t += "</tr></thead><tbody>";
+        rows.forEach(function (r) {
+          t += "<tr>";
+          r.forEach(function (c) { t += "<td>" + inline(c) + "</td>"; });
+          t += "</tr>";
+        });
+        t += "</tbody></table></div>";
+        out.push(t);
+      } else if (/^\s*-\s+/.test(line)) {
+        var items = [];
+        while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+          var indent = lines[i].match(/^(\s*)-/)[1].length;
+          items.push({ indent: indent, text: lines[i].replace(/^\s*-\s+/, "") });
+          i++;
+        }
+        var ul = "<ul>";
+        var j = 0;
+        while (j < items.length) {
+          ul += "<li>" + inline(items[j].text);
+          if (j + 1 < items.length && items[j + 1].indent > items[j].indent) {
+            ul += "<ul>";
+            j++;
+            while (j < items.length && items[j].indent > items[0].indent) {
+              ul += "<li>" + inline(items[j].text) + "</li>";
+              j++;
+            }
+            ul += "</ul>";
+          } else {
+            j++;
+          }
+          ul += "</li>";
+        }
+        ul += "</ul>";
+        out.push(ul);
+      } else if (line.trim() === "") {
+        i++;
+      } else {
+        out.push("<p>" + inline(line) + "</p>");
+        i++;
+      }
+    }
+    return out.join("\n");
+  }
+
   function openDetail(job, name) {
     detailTitle.textContent = name;
-    detailBody.textContent = "불러오는 중...";
+    detailBody.classList.remove("plain");
+    showPlainText("불러오는 중...");
     showScreen("detailScreen");
     apiFetch("/report/" + job, {}, 15000).then(function (r) { return r.json(); }).then(function (res) {
       if (!res.ok) {
-        detailBody.textContent = "리포트 없음";
+        showPlainText("리포트 없음");
         return;
       }
       var d = res.data;
       if (job === "dart") {
-        detailBody.textContent = d.content;
+        detailBody.classList.remove("plain");
+        detailBody.innerHTML = mdToHtml(d.content || "");
       } else if (job === "news" && d.html) {
+        detailBody.classList.remove("plain");
         detailBody.innerHTML = "";
         var iframe = document.createElement("iframe");
         detailBody.appendChild(iframe);
         iframe.srcdoc = d.html;
       } else if (job === "paper") {
         if (d.html) {
+          detailBody.classList.remove("plain");
           detailBody.innerHTML = "";
           var iframe2 = document.createElement("iframe");
           detailBody.appendChild(iframe2);
           iframe2.srcdoc = d.html;
         } else {
-          detailBody.textContent = (d.top || []).map(function (p) { return "• " + p.title; }).join("\n");
+          showPlainText((d.top || []).map(function (p) { return "• " + p.title; }).join("\n"));
         }
       }
     }).catch(function (e) {
-      detailBody.textContent = "불러오기 실패: " + e.message;
+      showPlainText("불러오기 실패: " + e.message);
     });
   }
 
