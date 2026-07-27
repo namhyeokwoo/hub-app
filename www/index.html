@@ -330,9 +330,12 @@
   }
 
   function fetchResult(job) {
+    // raw.githubusercontent.com은 비공개 저장소용 Authorization 헤더가 실린 cross-origin
+    // 요청의 CORS를 지원하지 않아 WebView에서 "Failed to fetch"로 막힘 — 이미 CORS가 확인된
+    // api.github.com의 Contents API를 raw 미디어 타입으로 호출해 같은 호스트로 통일한다.
     var jc = CLOUD_JOBS[job];
-    var url = "https://raw.githubusercontent.com/" + GH_OWNER + "/" + jc.repo + "/" + jc.branch + "/" + jc.resultPath + "?t=" + Date.now();
-    return ghFetch(url, {}, 20000).then(function (r) {
+    var url = GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/contents/" + jc.resultPath + "?ref=" + jc.branch;
+    return ghFetch(url, { headers: { "Accept": "application/vnd.github.raw" } }, 20000).then(function (r) {
       if (!r.ok) throw new Error("결과 조회 실패 (" + r.status + ")");
       return r.text();
     });
