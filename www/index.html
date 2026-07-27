@@ -80,6 +80,14 @@
     .test-result.ok { display: block; background: rgba(34,197,94,.15); color: var(--green); }
     .test-result.fail { display: block; background: rgba(239,68,68,.15); color: var(--red); }
 
+    .mode-toggle { display: flex; gap: 8px; }
+    .mode-btn {
+      flex: 1; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 700;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; touch-action: manipulation;
+    }
+    .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
     /* ── 대시보드 ──────────────────────────── */
     .tile {
       background: var(--surface); border: 1px solid var(--border);
@@ -161,18 +169,40 @@
     </div>
     <div style="padding:16px;">
       <div class="field">
-        <label>PC Tailscale IP</label>
-        <input id="inIp" type="text" placeholder="100.x.x.x" autocapitalize="off" autocorrect="off">
+        <label>실행 위치</label>
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn" id="modeLocalBtn">로컬 (PC)</button>
+          <button type="button" class="mode-btn" id="modeCloudBtn">클라우드 (GitHub Actions)</button>
+        </div>
       </div>
-      <div class="field">
-        <label>포트</label>
-        <input id="inPort" type="number" placeholder="8787" value="8787">
+
+      <div id="localFields">
+        <div class="field">
+          <label>PC Tailscale IP</label>
+          <input id="inIp" type="text" placeholder="100.x.x.x" autocapitalize="off" autocorrect="off">
+        </div>
+        <div class="field">
+          <label>포트</label>
+          <input id="inPort" type="number" placeholder="8787" value="8787">
+        </div>
+        <div class="field">
+          <label>API 토큰</label>
+          <input id="inToken" type="password" placeholder="hub_api.py 실행 시 .env의 HUB_API_TOKEN" autocapitalize="off" autocorrect="off">
+          <div class="hint">PC의 K:\claude\.env 파일에 있는 HUB_API_TOKEN 값을 그대로 붙여넣으세요.</div>
+        </div>
       </div>
-      <div class="field">
-        <label>API 토큰</label>
-        <input id="inToken" type="password" placeholder="hub_api.py 실행 시 .env의 HUB_API_TOKEN" autocapitalize="off" autocorrect="off">
-        <div class="hint">PC의 K:\claude\.env 파일에 있는 HUB_API_TOKEN 값을 그대로 붙여넣으세요.</div>
+
+      <div id="cloudFields" style="display:none;">
+        <div class="field">
+          <label>GitHub Personal Access Token</label>
+          <input id="inGhToken" type="password" placeholder="ghp_... 또는 github_pat_..." autocapitalize="off" autocorrect="off">
+          <div class="hint">GitHub → Settings → Developer settings → Fine-grained tokens에서
+            namhyeokwoo/dart, namhyeokwoo/it-news repo에 Actions(Read and write) +
+            Contents(Read and write) 권한으로 발급한 토큰을 붙여넣으세요. 논문 브리핑/AI·SW 조달은
+            클라우드 모드에서 지원되지 않습니다(로컬 모드에서만 실행 가능).</div>
+        </div>
       </div>
+
       <button class="btn btn-outline" id="btnTest">연결 테스트</button>
       <div id="testResult" class="test-result"></div>
       <button class="btn btn-primary" id="btnSave" style="margin-top:16px;">저장</button>
@@ -205,16 +235,28 @@
   var JOB_TIMEOUT = { dart: 190000, news: 70000, paper: 310000 };
   var JOB_LABEL_RUNNING = { dart: "수집 중...", news: "수집 중...", paper: "브리핑 실행 중..." };
 
+  // ── 클라우드(GitHub Actions) 모드 설정 ─────────
+  var GH_API = "https://api.github.com";
+  var GH_OWNER = "namhyeokwoo";
+  var CLOUD_JOBS = {
+    dart: { repo: "dart", branch: "master", workflow: "run.yml", resultPath: "outputs/latest.md",
+            inputs: function () { return { date: "today" }; } },
+    news: { repo: "it-news", branch: "master", workflow: "run.yml", resultPath: "it_news_latest.html",
+            inputs: function () { return {}; } },
+  };
+
   function cfg() {
     return {
       ip: localStorage.getItem("hub_ip") || "",
       port: localStorage.getItem("hub_port") || "8787",
       token: localStorage.getItem("hub_token") || "",
+      ghToken: localStorage.getItem("hub_gh_token") || "",
+      mode: localStorage.getItem("hub_mode") || "local",
     };
   }
   function hasCfg() {
     var c = cfg();
-    return !!(c.ip && c.token);
+    return c.mode === "cloud" ? !!c.ghToken : !!(c.ip && c.token);
   }
   function apiUrl(path) {
     var c = cfg();
@@ -231,6 +273,71 @@
     return fetch(apiUrl(path), opts).finally(function () { clearTimeout(timer); });
   }
 
+  // ── GitHub API 호출 (클라우드 모드) ─────────────
+  function ghFetch(url, opts, timeoutMs) {
+    opts = opts || {};
+    var c = cfg();
+    opts.headers = Object.assign({
+      "Authorization": "Bearer " + c.ghToken,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    }, opts.headers || {});
+    if (opts.cache === undefined) opts.cache = "no-store";
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeoutMs || 15000);
+    opts.signal = controller.signal;
+    return fetch(url, opts).finally(function () { clearTimeout(timer); });
+  }
+
+  function clientRunId() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function dispatchWorkflow(job) {
+    var jc = CLOUD_JOBS[job];
+    var runId = clientRunId();
+    var inputs = Object.assign({ client_run_id: runId }, jc.inputs());
+    return ghFetch(
+      GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/actions/workflows/" + jc.workflow + "/dispatches",
+      { method: "POST", body: JSON.stringify({ ref: jc.branch, inputs: inputs }) }
+    ).then(function (r) {
+      if (!r.ok) throw new Error("트리거 실패 (" + r.status + ")");
+      return runId;
+    });
+  }
+
+  function pollRun(job, runId, onTick) {
+    var jc = CLOUD_JOBS[job];
+    var deadline = Date.now() + 8 * 60 * 1000;
+    function wait(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+    function tick() {
+      if (Date.now() > deadline) {
+        return Promise.reject(new Error("시간 초과 — GitHub Actions 탭에서 직접 확인하세요"));
+      }
+      return ghFetch(GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/actions/runs?event=workflow_dispatch&per_page=10")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var run = (data.workflow_runs || []).find(function (r) {
+            return r.name && r.name.indexOf(runId) !== -1;
+          });
+          if (!run) { if (onTick) onTick("대기 중..."); return wait(5000).then(tick); }
+          if (run.status !== "completed") { if (onTick) onTick("실행 중..."); return wait(8000).then(tick); }
+          if (run.conclusion !== "success") throw new Error("워크플로 실패 (" + run.conclusion + ")");
+          return run;
+        });
+    }
+    return tick();
+  }
+
+  function fetchResult(job) {
+    var jc = CLOUD_JOBS[job];
+    var url = "https://raw.githubusercontent.com/" + GH_OWNER + "/" + jc.repo + "/" + jc.branch + "/" + jc.resultPath + "?t=" + Date.now();
+    return ghFetch(url, {}, 20000).then(function (r) {
+      if (!r.ok) throw new Error("결과 조회 실패 (" + r.status + ")");
+      return r.text();
+    });
+  }
+
   function showScreen(id) {
     ["settingsScreen", "homeScreen", "detailScreen"].forEach(function (s) {
       document.getElementById(s).classList.toggle("active", s === id);
@@ -241,26 +348,56 @@
   var inIp = document.getElementById("inIp");
   var inPort = document.getElementById("inPort");
   var inToken = document.getElementById("inToken");
+  var inGhToken = document.getElementById("inGhToken");
   var testResult = document.getElementById("testResult");
+  var localFields = document.getElementById("localFields");
+  var cloudFields = document.getElementById("cloudFields");
+  var modeLocalBtn = document.getElementById("modeLocalBtn");
+  var modeCloudBtn = document.getElementById("modeCloudBtn");
+  var selectedMode = "local";
+
+  function applyModeUI(mode) {
+    selectedMode = mode;
+    modeLocalBtn.classList.toggle("active", mode === "local");
+    modeCloudBtn.classList.toggle("active", mode === "cloud");
+    localFields.style.display = mode === "local" ? "" : "none";
+    cloudFields.style.display = mode === "cloud" ? "" : "none";
+  }
+
+  modeLocalBtn.addEventListener("click", function () { applyModeUI("local"); });
+  modeCloudBtn.addEventListener("click", function () { applyModeUI("cloud"); });
 
   function loadSettingsForm() {
     var c = cfg();
     inIp.value = c.ip;
     inPort.value = c.port || "8787";
     inToken.value = c.token;
+    inGhToken.value = c.ghToken;
+    applyModeUI(c.mode);
   }
 
-  document.getElementById("btnTest").addEventListener("click", function () {
+  function saveFieldsToStorage() {
     localStorage.setItem("hub_ip", inIp.value.trim());
     localStorage.setItem("hub_port", inPort.value.trim() || "8787");
     localStorage.setItem("hub_token", inToken.value.trim());
+    localStorage.setItem("hub_gh_token", inGhToken.value.trim());
+    localStorage.setItem("hub_mode", selectedMode);
+  }
+
+  document.getElementById("btnTest").addEventListener("click", function () {
+    saveFieldsToStorage();
     testResult.className = "test-result";
     testResult.textContent = "확인 중...";
     testResult.style.display = "block";
-    apiFetch("/health", {}, 8000).then(function (r) {
-      if (!r.ok) throw new Error("status " + r.status);
-      return r.json();
-    }).then(function () {
+    var testPromise = selectedMode === "cloud"
+      ? ghFetch(GH_API + "/repos/" + GH_OWNER + "/" + CLOUD_JOBS.dart.repo, {}, 8000).then(function (r) {
+          if (!r.ok) throw new Error("status " + r.status);
+        })
+      : apiFetch("/health", {}, 8000).then(function (r) {
+          if (!r.ok) throw new Error("status " + r.status);
+          return r.json();
+        });
+    testPromise.then(function () {
       testResult.className = "test-result ok";
       testResult.textContent = "✅ 연결 성공";
     }).catch(function (e) {
@@ -270,12 +407,10 @@
   });
 
   document.getElementById("btnSave").addEventListener("click", function () {
-    localStorage.setItem("hub_ip", inIp.value.trim());
-    localStorage.setItem("hub_port", inPort.value.trim() || "8787");
-    localStorage.setItem("hub_token", inToken.value.trim());
+    saveFieldsToStorage();
     if (!hasCfg()) {
       testResult.className = "test-result fail";
-      testResult.textContent = "IP와 토큰을 입력하세요.";
+      testResult.textContent = selectedMode === "cloud" ? "GitHub 토큰을 입력하세요." : "IP와 토큰을 입력하세요.";
       testResult.style.display = "block";
       return;
     }
@@ -303,6 +438,12 @@
 
   var tilesEl = document.getElementById("tiles");
   var connBanner = document.getElementById("connBanner");
+  var PROJECTS_STATIC = [
+    { name: "DART Daily", icon: "📊" },
+    { name: "IT 뉴스", icon: "📰" },
+    { name: "논문 브리핑", icon: "📄" },
+    { name: "AI·SW 조달", icon: "🏛️" },
+  ];
 
   function renderTiles(projects, statusData) {
     tilesEl.innerHTML = "";
@@ -315,8 +456,8 @@
       top.className = "tile-top";
       top.innerHTML = "<span class='tile-icon'>" + p.icon + "</span><span class='tile-name'>" + p.name + "</span>";
 
-      if (!job) {
-        var up = statusData && statusData.ai_procurement && statusData.ai_procurement.up;
+      if (!job && statusData) {
+        var up = statusData.ai_procurement && statusData.ai_procurement.up;
         var pill = document.createElement("span");
         pill.className = "pill " + (up ? "up" : "down");
         pill.textContent = up ? "실행 중" : "꺼짐";
@@ -328,7 +469,9 @@
       summary.className = "tile-summary";
       tile.appendChild(summary);
 
-      if (job) {
+      var cloudUnsupported = cfg().mode === "cloud" && job && !CLOUD_JOBS[job];
+
+      if (job && !cloudUnsupported) {
         var actions = document.createElement("div");
         actions.className = "tile-actions";
 
@@ -347,7 +490,9 @@
       } else {
         var hint = document.createElement("div");
         hint.className = "tile-summary";
-        hint.textContent = "실행 기능은 추후 지원 (상태만 표시)";
+        hint.textContent = cloudUnsupported
+          ? "클라우드 모드 미지원 — 로컬 모드에서 이용하세요"
+          : "실행 기능은 추후 지원 (상태만 표시)";
         tile.appendChild(hint);
       }
 
@@ -356,6 +501,7 @@
   }
 
   function runJob(job, btn, summaryEl) {
+    if (cfg().mode === "cloud") { runJobCloud(job, btn, summaryEl); return; }
     btn.disabled = true;
     var origText = btn.textContent;
     btn.textContent = JOB_LABEL_RUNNING[job] || "실행 중...";
@@ -376,6 +522,27 @@
     });
   }
 
+  function runJobCloud(job, btn, summaryEl) {
+    if (!CLOUD_JOBS[job]) {
+      summaryEl.textContent = "❌ 클라우드 모드에서는 지원되지 않는 작업입니다.";
+      return;
+    }
+    btn.disabled = true;
+    var origText = btn.textContent;
+    btn.textContent = "트리거 중...";
+    summaryEl.textContent = "";
+    dispatchWorkflow(job).then(function (runId) {
+      return pollRun(job, runId, function (msg) { btn.textContent = msg; });
+    }).then(function () {
+      summaryEl.textContent = "✅ 완료 — 결과 보기를 눌러 확인하세요";
+    }).catch(function (e) {
+      summaryEl.textContent = "❌ 오류: " + e.message;
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = origText;
+    });
+  }
+
   function summaryFor(job, data) {
     if (job === "dart") return "총 " + data.total + " 수집 완료";
     if (job === "news") return "총 " + data.total + " 수집 완료";
@@ -385,6 +552,10 @@
 
   function loadHome() {
     connBanner.classList.remove("show");
+    if (cfg().mode === "cloud") {
+      renderTiles(PROJECTS_STATIC, null);
+      return;
+    }
     Promise.all([
       apiFetch("/projects", {}, 10000).then(function (r) { return r.json(); }),
       apiFetch("/status", {}, 10000).then(function (r) { return r.json(); }),
@@ -501,7 +672,32 @@
     return out.join("\n");
   }
 
+  function openDetailCloud(job, name) {
+    detailTitle.textContent = name;
+    detailBody.classList.remove("plain");
+    showPlainText("불러오는 중...");
+    showScreen("detailScreen");
+    if (!CLOUD_JOBS[job]) {
+      showPlainText("클라우드 모드에서는 지원되지 않는 작업입니다. 로컬 모드에서 이용하세요.");
+      return;
+    }
+    fetchResult(job).then(function (text) {
+      detailBody.classList.remove("plain");
+      if (job === "dart") {
+        detailBody.innerHTML = mdToHtml(text);
+      } else {
+        detailBody.innerHTML = "";
+        var iframe = document.createElement("iframe");
+        detailBody.appendChild(iframe);
+        iframe.srcdoc = text;
+      }
+    }).catch(function (e) {
+      showPlainText("불러오기 실패: " + e.message);
+    });
+  }
+
   function openDetail(job, name) {
+    if (cfg().mode === "cloud") { openDetailCloud(job, name); return; }
     detailTitle.textContent = name;
     detailBody.classList.remove("plain");
     showPlainText("불러오는 중...");
