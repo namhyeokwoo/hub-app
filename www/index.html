@@ -207,6 +207,14 @@
       <button class="btn btn-outline" id="btnTest">연결 테스트</button>
       <div id="testResult" class="test-result"></div>
       <button class="btn btn-primary" id="btnSave" style="margin-top:16px;">저장</button>
+
+      <div class="field" id="fcmTokenField" style="display:none; margin-top:24px;">
+        <label>FCM 기기 토큰</label>
+        <input id="inFcmToken" type="text" readonly>
+        <button type="button" class="btn btn-outline" id="btnCopyFcmToken" style="margin-top:8px;">토큰 복사</button>
+        <div class="hint">이 값을 dart / it-news / zdnet-event-app 저장소의 GitHub secret
+          FCM_DEVICE_TOKEN에 등록하면 작업완료·ZD브리핑 신규 일정 알림을 받을 수 있습니다.</div>
+      </div>
     </div>
   </div>
 
@@ -378,6 +386,43 @@
     inToken.value = c.token;
     inGhToken.value = c.ghToken;
     applyModeUI(c.mode);
+    showFcmToken();
+  }
+
+  // ── FCM 푸시 알림 등록 ──────────────────────
+  function showFcmToken() {
+    var token = localStorage.getItem("hub_fcm_token") || "";
+    var el = document.getElementById("inFcmToken");
+    var wrap = document.getElementById("fcmTokenField");
+    if (!el || !wrap) return;
+    if (token) {
+      el.value = token;
+      wrap.style.display = "";
+    } else {
+      wrap.style.display = "none";
+    }
+  }
+
+  document.getElementById("btnCopyFcmToken").addEventListener("click", function () {
+    var el = document.getElementById("inFcmToken");
+    el.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(el.value).catch(function () {});
+  });
+
+  function initPushNotifications() {
+    var PN = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PushNotifications;
+    if (!PN) return;
+    PN.requestPermissions().then(function (res) {
+      if (res.receive !== "granted") return;
+      PN.register();
+    });
+    PN.addListener("registration", function (token) {
+      localStorage.setItem("hub_fcm_token", token.value);
+      showFcmToken();
+    });
+    PN.addListener("registrationError", function (err) {
+      console.error("FCM registration error", err);
+    });
   }
 
   function saveFieldsToStorage() {
@@ -759,6 +804,7 @@
   }
 
   // ── 시작 ──────────────────────────────────
+  initPushNotifications();
   if (hasCfg()) {
     enterHome();
   } else {
