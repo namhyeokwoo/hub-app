@@ -140,6 +140,7 @@
       width: 100%; height: 100%; border: 1px solid var(--border);
       border-radius: 10px; background: #fff; display: block;
     }
+    .detail-body iframe.embed { background: transparent; }
     .detail-body h1 { color: var(--accent); font-size: 18px; margin-bottom: 16px; }
     .detail-body h2 {
       color: var(--text); font-size: 15px; font-weight: 700;
@@ -446,6 +447,7 @@
     { name: "IT 뉴스", icon: "📰" },
     { name: "논문 브리핑", icon: "📄" },
     { name: "AI·SW 조달", icon: "🏛️" },
+    { name: "ZD 캘린더", icon: "🗓️", embedUrl: "https://namhyeokwoo.github.io/zdnet-event-app/" },
   ];
 
   function renderTiles(projects, statusData) {
@@ -474,7 +476,16 @@
 
       var cloudUnsupported = cfg().mode === "cloud" && job && !CLOUD_JOBS[job];
 
-      if (job && !cloudUnsupported) {
+      if (p.embedUrl) {
+        var embedActions = document.createElement("div");
+        embedActions.className = "tile-actions";
+        var openBtn = document.createElement("button");
+        openBtn.className = "run";
+        openBtn.textContent = "열기";
+        openBtn.addEventListener("click", function () { openEmbed(p.name, p.embedUrl); });
+        embedActions.appendChild(openBtn);
+        tile.appendChild(embedActions);
+      } else if (job && !cloudUnsupported) {
         var actions = document.createElement("div");
         actions.className = "tile-actions";
 
@@ -673,6 +684,17 @@
       }
     }
     return out.join("\n");
+  }
+
+  function openEmbed(name, url) {
+    detailTitle.textContent = name;
+    detailBody.classList.remove("plain");
+    detailBody.innerHTML = "";
+    var iframe = document.createElement("iframe");
+    iframe.className = "embed";
+    detailBody.appendChild(iframe);
+    iframe.src = url;
+    showScreen("detailScreen");
   }
 
   function openDetailCloud(job, name) {
