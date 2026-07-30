@@ -198,9 +198,9 @@
           <label>GitHub Personal Access Token</label>
           <input id="inGhToken" type="password" placeholder="ghp_... 또는 github_pat_..." autocapitalize="off" autocorrect="off">
           <div class="hint">GitHub → Settings → Developer settings → Fine-grained tokens에서
-            namhyeokwoo/dart, namhyeokwoo/it-news repo에 Actions(Read and write) +
-            Contents(Read and write) 권한으로 발급한 토큰을 붙여넣으세요. 논문 브리핑/AI·SW 조달은
-            클라우드 모드에서 지원되지 않습니다(로컬 모드에서만 실행 가능).</div>
+            namhyeokwoo/dart, namhyeokwoo/it-news, namhyeokwoo/ai-weekly-paper-briefing repo에
+            Actions(Read and write) + Contents(Read and write) 권한으로 발급한 토큰을 붙여넣으세요.
+            AI·SW 조달은 클라우드 모드에서 지원되지 않습니다(로컬 모드에서만 실행 가능).</div>
         </div>
       </div>
 
@@ -252,6 +252,8 @@
             inputs: function () { return { date: "today" }; } },
     news: { repo: "it-news", branch: "master", workflow: "run.yml", resultPath: "it_news_latest.html",
             inputs: function () { return {}; } },
+    paper: { repo: "ai-weekly-paper-briefing", branch: "master", workflow: "run.yml", resultPath: "briefing.html",
+             inputs: function () { return {}; } },
   };
 
   function cfg() {
