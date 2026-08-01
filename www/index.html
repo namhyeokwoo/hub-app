@@ -199,8 +199,8 @@
           <input id="inGhToken" type="password" placeholder="ghp_... 또는 github_pat_..." autocapitalize="off" autocorrect="off">
           <div class="hint">GitHub → Settings → Developer settings → Fine-grained tokens에서
             namhyeokwoo/dart, namhyeokwoo/it-news, namhyeokwoo/ai-weekly-paper-briefing,
-            namhyeokwoo/ai-public repo에 Actions(Read and write) + Contents(Read and write)
-            권한으로 발급한 토큰을 붙여넣으세요.</div>
+            namhyeokwoo/ai-public, namhyeokwoo/x-influencer-briefing repo에 Actions(Read and write)
+            + Contents(Read and write) 권한으로 발급한 토큰을 붙여넣으세요.</div>
         </div>
       </div>
 
@@ -212,9 +212,9 @@
         <label>FCM 기기 토큰</label>
         <input id="inFcmToken" type="text" readonly>
         <button type="button" class="btn btn-outline" id="btnCopyFcmToken" style="margin-top:8px;">토큰 복사</button>
-        <div class="hint">이 값을 dart / it-news / ai-weekly-paper-briefing / ai-public / zdnet-event-app
-          저장소의 GitHub secret FCM_DEVICE_TOKEN에 등록하면 작업완료·ZD브리핑 신규 일정 알림을
-          받을 수 있습니다.</div>
+        <div class="hint">이 값을 dart / it-news / ai-weekly-paper-briefing / ai-public / zdnet-event-app /
+          x-influencer-briefing 저장소의 GitHub secret FCM_DEVICE_TOKEN에 등록하면
+          작업완료·ZD브리핑 신규 일정·인플루언서 브리핑 알림을 받을 수 있습니다.</div>
       </div>
     </div>
   </div>
@@ -242,8 +242,8 @@
 
 <script>
 (function () {
-  var JOB_TIMEOUT = { dart: 190000, news: 70000, paper: 310000, ai_bids: 1520000 };
-  var JOB_LABEL_RUNNING = { dart: "수집 중...", news: "수집 중...", paper: "브리핑 실행 중...", ai_bids: "전수조사 실행 중... (10~20분)" };
+  var JOB_TIMEOUT = { dart: 190000, news: 70000, paper: 310000, ai_bids: 1520000, influencer: 310000 };
+  var JOB_LABEL_RUNNING = { dart: "수집 중...", news: "수집 중...", paper: "브리핑 실행 중...", ai_bids: "전수조사 실행 중... (10~20분)", influencer: "수집 중..." };
 
   // ── 클라우드(GitHub Actions) 모드 설정 ─────────
   var GH_API = "https://api.github.com";
@@ -257,6 +257,8 @@
              inputs: function () { return {}; } },
     ai_bids: { repo: "ai-public", branch: "master", workflow: "run.yml", resultPath: "ai_procurement_summary.md",
                inputs: function () { return {}; }, pollDeadlineMs: 1500000 },
+    influencer: { repo: "x-influencer-briefing", branch: "master", workflow: "run.yml", resultPath: "briefing.html",
+                  inputs: function () { return {}; } },
   };
 
   function cfg() {
@@ -483,6 +485,7 @@
     { test: function (name) { return name.indexOf("뉴스") !== -1; }, job: "news" },
     { test: function (name) { return name.indexOf("논문") !== -1; }, job: "paper" },
     { test: function (name) { return name.indexOf("조달") !== -1; }, job: "ai_bids" },
+    { test: function (name) { return name.indexOf("인플루언서") !== -1; }, job: "influencer" },
   ];
   function jobFor(name) {
     for (var i = 0; i < JOB_MATCH.length; i++) {
@@ -499,6 +502,7 @@
     { name: "논문 브리핑", icon: "📄" },
     { name: "AI·SW 조달", icon: "🏛️" },
     { name: "ZD 캘린더", icon: "🗓️", embedUrl: "https://namhyeokwoo.github.io/zdnet-event-app/" },
+    { name: "X 인플루언서", icon: "🐦" },
   ];
 
   function renderTiles(projects, statusData) {
@@ -614,6 +618,7 @@
     if (job === "news") return "총 " + data.total + " 수집 완료";
     if (job === "paper") return "총 " + data.count + "편 분석 완료";
     if (job === "ai_bids") return "총 " + data.total + " 분석 완료";
+    if (job === "influencer") return "총 " + data.count + "건 수집 완료";
     return "완료";
   }
 
@@ -808,6 +813,16 @@
       } else if (job === "ai_bids") {
         detailBody.classList.remove("plain");
         detailBody.innerHTML = mdToHtml(d.content || "");
+      } else if (job === "influencer") {
+        if (d.html) {
+          detailBody.classList.remove("plain");
+          detailBody.innerHTML = "";
+          var iframe3 = document.createElement("iframe");
+          detailBody.appendChild(iframe3);
+          iframe3.srcdoc = d.html;
+        } else {
+          showPlainText((d.top || []).map(function (p) { return "• " + p.handle + ": " + p.text; }).join("\n"));
+        }
       }
     }).catch(function (e) {
       showPlainText("불러오기 실패: " + e.message);
