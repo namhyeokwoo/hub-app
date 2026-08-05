@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="robots" content="noindex, nofollow">
+  <title>개발 허브 · 리포트</title>
+  <style>
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --border:   #334155;
+      --accent:   #3b82f6;
+      --text:     #f8fafc;
+      --muted:    #94a3b8;
+      --amber:    #f59e0b;
+      --safe-top: env(safe-area-inset-top, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+    }
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: calc(var(--safe-top) + 14px) 16px 14px;
+    }
+    .header-title { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    .header-title em { font-style: normal; color: var(--accent); }
+    .header-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .tabs {
+      display: flex; gap: 8px; padding: 12px 16px 0;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .tab {
+      flex-shrink: 0; padding: 9px 14px; border-radius: 20px; font-size: 13px; font-weight: 700;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; touch-action: manipulation;
+    }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .updated { font-size: 12px; color: var(--muted); padding: 10px 16px 0; }
+
+    .panel { display: none; padding: 16px; }
+    .panel.active { display: block; }
+    .panel iframe {
+      width: 100%; height: calc(100vh - 140px); min-height: 480px;
+      border: 1px solid var(--border); border-radius: 10px; background: #fff; display: block;
+    }
+    .body { font-size: 13px; line-height: 1.6; }
+    .body h1 { color: var(--accent); font-size: 18px; margin-bottom: 16px; }
+    .body h2 {
+      color: var(--text); font-size: 15px; font-weight: 700;
+      margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+    }
+    .body h3 { color: var(--amber); font-size: 13px; margin: 14px 0 6px; }
+    .body .table-scroll { overflow-x: auto; margin-bottom: 10px; -webkit-overflow-scrolling: touch; }
+    .body table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    .body th {
+      background: var(--surface); color: var(--muted);
+      padding: 5px 8px; font-weight: 700; text-align: left; white-space: nowrap;
+    }
+    .body td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .body ul { margin: 0 0 10px 20px; }
+    .body li { margin-bottom: 4px; }
+    .body details {
+      margin-bottom: 8px; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px;
+    }
+    .body summary { cursor: pointer; font-size: 13px; padding: 2px 0; }
+    .body summary strong { color: var(--text); }
+    .body details ul { margin-top: 8px; margin-bottom: 0; }
+    .body p { margin-bottom: 8px; color: var(--muted); }
+    .body strong { color: var(--text); }
+    .body a { color: var(--accent); text-decoration: none; }
+    .body .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-title">개발 <em>허브</em> · 리포트</div>
+    <div class="header-sub">읽기 전용 공개 페이지 — 실행/설정 기능 없음</div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="dart">📊 DART 공시</button>
+    <button class="tab" data-tab="news">📰 IT 뉴스</button>
+    <button class="tab" data-tab="paper">📄 논문 브리핑</button>
+  </div>
+  <div class="updated" id="updated"></div>
+
+  <div class="panel active" id="panel-dart"><div class="body" id="body-dart">불러오는 중...</div></div>
+  <div class="panel" id="panel-news"><iframe id="frame-news"></iframe></div>
+  <div class="panel" id="panel-paper"><iframe id="frame-paper"></iframe></div>
+
+<script>
+(function () {
+  // 이 페이지는 이 저장소(namhyeokwoo/hub-app, public)에 커밋된 정적 파일만 읽는다.
+  // dart / it-news / ai-weekly-paper-briefing repo(모두 private)에는 어떤 방식으로도
+  // 직접 접근하지 않는다 — 각 repo의 GitHub Actions가 실행 후 이 경로(www/report/data/)에
+  // 결과를 직접 push해서 채워놓는 구조. 그래서 이 페이지엔 토큰/인증 입력이 전혀 없다.
+  var SOURCES = {
+    dart:  { file: "data/dart.md",   meta: "data/dart.meta.json",  type: "md" },
+    news:  { file: "data/news.html", meta: "data/news.meta.json",  type: "html" },
+    paper: { file: "data/paper.html", meta: "data/paper.meta.json", type: "html" },
+  };
+  var loaded = {};
+  var metaCache = {};
+  var updatedEl = document.getElementById("updated");
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function inline(s) {
+    s = esc(s);
+    s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/\[(.*)\]\(([^)]+)\)/, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+  function cells(line) {
+    return line.replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+  }
+
+  // 최소 마크다운(#/##/###, 표, **bold**, [text](url), -불릿, <details> 통과) → HTML.
+  // hub-app/www/index.html의 mdToHtml()과 동일한 오프라인 파서(CDN 의존 없음).
+  function mdToHtml(md) {
+    var lines = md.split("\n");
+    var out = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^###\s+/.test(line)) {
+        out.push("<h3>" + inline(line.replace(/^###\s+/, "")) + "</h3>");
+        i++;
+      } else if (/^##\s+/.test(line)) {
+        out.push("<h2>" + inline(line.replace(/^##\s+/, "")) + "</h2>");
+        i++;
+      } else if (/^#\s+/.test(line)) {
+        out.push("<h1>" + inline(line.replace(/^#\s+/, "")) + "</h1>");
+        i++;
+      } else if (line.trim() === "<details>" || line.trim() === "</details>") {
+        out.push(line.trim());
+        i++;
+      } else if (/^<summary>.*<\/summary>$/.test(line.trim())) {
+        out.push(line.trim());
+        i++;
+      } else if (/^\|/.test(line)) {
+        var header = cells(line);
+        i++;
+        if (i < lines.length && /^\|[\s\-:|]+\|?$/.test(lines[i])) i++;
+        var rows = [];
+        while (i < lines.length && /^\|/.test(lines[i])) {
+          rows.push(cells(lines[i]));
+          i++;
+        }
+        var t = '<div class="table-scroll"><table><thead><tr>';
+        header.forEach(function (h) { t += "<th>" + inline(h) + "</th>"; });
+        t += "</tr></thead><tbody>";
+        rows.forEach(function (r) {
+          t += "<tr>";
+          r.forEach(function (c) { t += "<td>" + inline(c) + "</td>"; });
+          t += "</tr>";
+        });
+        t += "</tbody></table></div>";
+        out.push(t);
+      } else if (/^\s*-\s+/.test(line)) {
+        var items = [];
+        while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+          var indent = lines[i].match(/^(\s*)-/)[1].length;
+          items.push({ indent: indent, text: lines[i].replace(/^\s*-\s+/, "") });
+          i++;
+        }
+        var ul = "<ul>";
+        var j = 0;
+        while (j < items.length) {
+          ul += "<li>" + inline(items[j].text);
+          if (j + 1 < items.length && items[j + 1].indent > items[j].indent) {
+            ul += "<ul>";
+            j++;
+            while (j < items.length && items[j].indent > items[0].indent) {
+              ul += "<li>" + inline(items[j].text) + "</li>";
+              j++;
+            }
+            ul += "</ul>";
+          } else {
+            j++;
+          }
+          ul += "</li>";
+        }
+        ul += "</ul>";
+        out.push(ul);
+      } else if (line.trim() === "") {
+        i++;
+      } else {
+        out.push("<p>" + inline(line) + "</p>");
+        i++;
+      }
+    }
+    return out.join("\n");
+  }
+
+  function fmtUpdated(iso) {
+    if (!iso) return "";
+    try {
+      var d = new Date(iso);
+      return "최근 업데이트: " + d.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) + " (KST)";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function showUpdated(key) {
+    updatedEl.textContent = fmtUpdated(metaCache[key] && metaCache[key].updated);
+  }
+
+  function loadMeta(key) {
+    var src = SOURCES[key];
+    fetch(src.meta, { cache: "no-store" }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (m) {
+      metaCache[key] = m || {};
+      if (document.querySelector('.tab.active').dataset.tab === key) showUpdated(key);
+    }).catch(function () {});
+  }
+
+  function loadTab(key) {
+    loadMeta(key);
+    if (loaded[key]) { showUpdated(key); return; }
+    loaded[key] = true;
+    var src = SOURCES[key];
+    fetch(src.file, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("not found");
+      return r.text();
+    }).then(function (text) {
+      if (src.type === "md") {
+        document.getElementById("body-dart").innerHTML = mdToHtml(text);
+      } else {
+        document.getElementById("frame-" + key).srcdoc = text;
+      }
+    }).catch(function () {
+      if (src.type === "md") {
+        document.getElementById("body-dart").innerHTML = '<div class="empty">아직 게시된 리포트가 없습니다.</div>';
+      } else {
+        document.getElementById("panel-" + key).innerHTML = '<div class="body"><div class="empty">아직 게시된 리포트가 없습니다.</div></div>';
+      }
+    });
+  }
+
+  document.querySelectorAll(".tab").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll(".tab").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+      btn.classList.add("active");
+      document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+      loadTab(btn.dataset.tab);
+    });
+  });
+
+  loadTab("dart");
+})();
+</script>
+</body>
+</html>

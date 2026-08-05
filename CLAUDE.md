@@ -35,6 +35,30 @@ Pages로 웹 버전도 배포됨. `namhyeokwoo/hub-app`(public — GitHub Pages 
 실행시간이 긴 job(예: ai_bids 10~20분)은 `CLOUD_JOBS[job].pollDeadlineMs`로 폴링 타임아웃 개별
 조정 가능(기본 8분, ai_bids는 25분).
 
+## 공개 리포트 페이지 (`www/report/`, 2026-08-06)
+
+기존 제어 대시보드(`www/index.html`, PAT 입력·실행 버튼·FCM 토큰 등 포함)와 완전히 분리된
+읽기 전용 정적 페이지. `www/report/index.html`은 자체 인증/localStorage 없이
+`www/report/data/{dart.md,news.html,paper.html}` 3개 파일만 fetch해서 보여준다.
+
+- **대상 3개(dart 공시, it-news, ai-weekly-paper-briefing)만 포함**. ai-public(AI·SW
+  조달, 나라장터 API 401로 아직 한 번도 성공 실행 못함)과 x-influencer-briefing(X API 토큰
+  미발급)은 아직 안정화 전이라 의도적으로 제외 — 두 project는 `www/report/`의 어떤 파일에도
+  등장하지 않음(빈 섹션조차 없음, 완전 부재)
+- **데이터 흐름**: dart/it-news/ai-weekly-paper-briefing(모두 private repo) 각각의
+  `.github/workflows/run.yml` 마지막 스텝이 결과 파일을 `www/report/data/`에 직접 커밋·push함
+  (`git clone` + `HUB_APP_TOKEN` 시크릿). 페이지 로드 시점엔 어떤 API도 호출하지 않음 — 순수
+  정적 파일 서빙이라 private repo 자격증명이 클라이언트에 노출될 일 자체가 없음
+  (hub-app이 public repo이므로 브라우저에서 직접 그 repo들에 접근할 방법이 없기 때문)
+- **`HUB_APP_TOKEN`**: fine-grained PAT, **hub-app repo에만** Contents(Read and write) 권한.
+  dart/it-news/ai-weekly-paper-briefing 3개 repo의 GitHub Secret으로 각각 등록 필요(사용자가
+  직접 발급 — 위 FCM과 동일하게 Claude 자동모드는 크리덴셜 직접 취급 안 함). 안드로이드
+  앱이 쓰는 기존 PAT(Actions+Contents write, 5개 repo 대상)와는 **별개의 좁은 권한 토큰** —
+  재사용 금지(유출 시 피해 범위를 hub-app repo 하나로 제한하기 위함)
+- `www/robots.txt`(`Disallow: /report/`) + 페이지 자체 `<meta name="robots" content="noindex,
+  nofollow">` 이중으로 검색엔진 색인 차단
+- `pages.yml`은 `www/**` 전체를 배포하므로 `www/report/`도 별도 워크플로 수정 없이 자동 포함됨
+
 ## ZD캘린더 타일 (embedUrl 패턴)
 
 `embedUrl` 필드가 있는 타일(zdnet-event-app)은 job 실행 없이 `openEmbed()`로 곧바로
