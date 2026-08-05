@@ -6,13 +6,15 @@
 - 논문 브리핑 클라우드 모드 지원 추가
 
 ## 현재 상태 / 막힌 점
-`www/index.html`에 **미커밋 변경** 있음(dart의 `<details>` 지원 + 날짜 pill UI, 로컬 목업
-테스트만 완료). 로컬(Tailscale)+클라우드(GitHub Actions) 모드 전체가 실기기(S23 Ultra)에서
-검증 완료 상태이나, AI·SW 조달 job은 나라장터 API 401로 실제 실행을 한 번도 못 봄(ai public
-쪽 이슈, 코드는 완성).
+`www/index.html`의 dart `<details>` 지원 + 날짜 pill UI는 커밋·push 완료(2026-08-05),
+GitHub Pages(`namhyeokwoo.github.io/hub-app`)에 자동 재배포되어 브라우저로 직접 동작
+확인함(날짜 pill 전환, 회사별 접기 클릭). **웹만 확인** — 폰에 설치된 네이티브 APK는
+`www/`를 빌드 시점에 번들하므로 이 변경을 반영하려면 별도로 `cap sync` + 재빌드 +
+사이드로드 재설치가 필요(요청 시 진행). AI·SW 조달 job은 나라장터 API 401로 실제 실행을
+한 번도 못 봄(ai public 쪽 이슈, 코드는 완성).
 
 ## 다음 할 일
-1. `www/index.html`의 미커밋 변경(dart 날짜 이력 UI) push 여부 확인 — dart repo와 함께 검증 필요
+1. (선택) 폰 APK에도 이번 dart UI 변경을 반영하려면 재빌드+재설치 필요 — 사용자 요청 시 진행
 2. AI·SW 조달 job은 ai public의 API 401 해소 후 로컬/클라우드 둘 다 실기기 재검증
 3. (선택) AI·SW 조달 Streamlit 자동시작 등록 — 사용자가 요청 안 하면 보류 유지
 4. (선택) 폰 완전 종료 상태에서의 클라우드 모드 재검증 — 지금까지는 와이파이 끄고 모바일데이터
