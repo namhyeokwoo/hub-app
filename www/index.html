@@ -129,6 +129,18 @@
       flex-shrink: 0;
     }
     .detail-header h2 { font-size: 16px; }
+    .date-pills {
+      display: flex; gap: 6px; overflow-x: auto; padding: 8px 16px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      -webkit-overflow-scrolling: touch;
+    }
+    .date-pills.hidden { display: none; }
+    .date-pill {
+      flex-shrink: 0; font-size: 12px; font-weight: 600; padding: 5px 12px;
+      border-radius: 20px; background: var(--surface); color: var(--muted);
+      border: 1px solid var(--border); white-space: nowrap;
+    }
+    .date-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .detail-body {
       flex: 1; min-height: 0; overflow-y: auto;
       padding: 16px;
@@ -156,6 +168,13 @@
     .detail-body td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
     .detail-body ul { margin: 0 0 10px 20px; }
     .detail-body li { margin-bottom: 4px; }
+    .detail-body details {
+      margin-bottom: 8px; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px;
+    }
+    .detail-body summary { cursor: pointer; font-size: 13px; padding: 2px 0; }
+    .detail-body summary strong { color: var(--text); }
+    .detail-body details ul { margin-top: 8px; margin-bottom: 0; }
     .detail-body p { margin-bottom: 8px; color: var(--muted); }
     .detail-body strong { color: var(--text); }
     .detail-body a { color: var(--accent); text-decoration: none; }
@@ -237,6 +256,7 @@
       <button class="icon-btn" id="btnBack">←</button>
       <h2 id="detailTitle">리포트</h2>
     </div>
+    <div id="datePills" class="date-pills hidden"></div>
     <div id="detailBody" class="detail-body">불러오는 중...</div>
   </div>
 
@@ -250,6 +270,8 @@
   var GH_OWNER = "namhyeokwoo";
   var CLOUD_JOBS = {
     dart: { repo: "dart", branch: "master", workflow: "run.yml", resultPath: "outputs/latest.md",
+            resultDir: "outputs", dateFilePattern: /^dart-daily-(\d{8})\.md$/,
+            dateFileName: function (date) { return "outputs/dart-daily-" + date + ".md"; },
             inputs: function () { return { date: "today" }; } },
     news: { repo: "it-news", branch: "master", workflow: "run.yml", resultPath: "it_news_latest.html",
             inputs: function () { return {}; } },
@@ -345,15 +367,44 @@
     return tick();
   }
 
-  function fetchResult(job) {
+  function fetchResult(job, pathOverride) {
     // raw.githubusercontent.com은 비공개 저장소용 Authorization 헤더가 실린 cross-origin
     // 요청의 CORS를 지원하지 않아 WebView에서 "Failed to fetch"로 막힘 — 이미 CORS가 확인된
     // api.github.com의 Contents API를 raw 미디어 타입으로 호출해 같은 호스트로 통일한다.
     var jc = CLOUD_JOBS[job];
-    var url = GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/contents/" + jc.resultPath + "?ref=" + jc.branch;
+    var path = pathOverride || jc.resultPath;
+    var url = GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/contents/" + path + "?ref=" + jc.branch;
     return ghFetch(url, { headers: { "Accept": "application/vnd.github.raw" } }, 20000).then(function (r) {
       if (!r.ok) throw new Error("결과 조회 실패 (" + r.status + ")");
       return r.text();
+    });
+  }
+
+  function fetchResultForDate(job, date) {
+    var jc = CLOUD_JOBS[job];
+    return fetchResult(job, jc.dateFileName(date));
+  }
+
+  function listCloudDates(job) {
+    // outputs/ 디렉토리를 나열해 날짜별 파일 목록을 얻는다 — latest.md처럼 패턴에
+    // 안 맞는 파일은 dateFilePattern으로 걸러내고, 최신순(내림차순)으로 정렬해 반환한다.
+    // GitHub Contents API는 디렉토리 나열 순서를 보장하지 않으므로 정렬은 필수.
+    // (raw Accept 헤더를 쓰면 안 됨 — 그건 파일 원문 조회 전용, 디렉토리 나열은 기본 JSON 헤더로.)
+    var jc = CLOUD_JOBS[job];
+    if (!jc.resultDir || !jc.dateFilePattern) return Promise.resolve([]);
+    var url = GH_API + "/repos/" + GH_OWNER + "/" + jc.repo + "/contents/" + jc.resultDir + "?ref=" + jc.branch;
+    return ghFetch(url, {}, 15000).then(function (r) {
+      if (!r.ok) throw new Error("날짜 목록 조회 실패 (" + r.status + ")");
+      return r.json();
+    }).then(function (entries) {
+      var dates = [];
+      (entries || []).forEach(function (e) {
+        var m = jc.dateFilePattern.exec(e.name);
+        if (m) dates.push(m[1]);
+      });
+      dates.sort();
+      dates.reverse();
+      return dates;
     });
   }
 
@@ -646,6 +697,7 @@
   // ── 상세 화면 ─────────────────────────────
   var detailTitle = document.getElementById("detailTitle");
   var detailBody = document.getElementById("detailBody");
+  var datePillsEl = document.getElementById("datePills");
 
   document.getElementById("btnBack").addEventListener("click", function () {
     showScreen("homeScreen");
@@ -688,6 +740,14 @@
         i++;
       } else if (/^#\s+/.test(line)) {
         out.push("<h1>" + inline(line.replace(/^#\s+/, "")) + "</h1>");
+        i++;
+      } else if (line.trim() === "<details>" || line.trim() === "</details>") {
+        // DART 리포트의 회사별 접기 그룹 — Python 쪽에서 회사명을 이미 html.escape()
+        // 처리해 넣으므로 여기서는 그대로 통과시킨다(이스케이프하면 <p>&lt;details&gt;로 깨짐).
+        out.push(line.trim());
+        i++;
+      } else if (/^<summary>.*<\/summary>$/.test(line.trim())) {
+        out.push(line.trim());
         i++;
       } else if (/^\|/.test(line)) {
         var header = cells(line);
@@ -745,6 +805,8 @@
   }
 
   function openEmbed(name, url) {
+    datePillsEl.classList.add("hidden");
+    datePillsEl.innerHTML = "";
     detailTitle.textContent = name;
     detailBody.classList.remove("plain");
     detailBody.innerHTML = "";
@@ -755,31 +817,74 @@
     showScreen("detailScreen");
   }
 
+  function renderDetailContent(job, text) {
+    detailBody.classList.remove("plain");
+    if (job === "dart" || job === "ai_bids") {
+      detailBody.innerHTML = mdToHtml(text);
+    } else {
+      detailBody.innerHTML = "";
+      var iframe = document.createElement("iframe");
+      detailBody.appendChild(iframe);
+      iframe.srcdoc = text;
+    }
+  }
+
+  function renderDatePills(job, dates, activeDate) {
+    datePillsEl.innerHTML = "";
+    dates.forEach(function (d) {
+      var btn = document.createElement("button");
+      btn.className = "date-pill" + (d === activeDate ? " active" : "");
+      btn.textContent = d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6, 8);
+      btn.addEventListener("click", function () { loadDateContent(job, d, dates); });
+      datePillsEl.appendChild(btn);
+    });
+    datePillsEl.classList.remove("hidden");
+  }
+
+  function loadDateContent(job, date, dates) {
+    showPlainText("불러오는 중...");
+    renderDatePills(job, dates, date);
+    fetchResultForDate(job, date).then(function (text) {
+      renderDetailContent(job, text);
+    }).catch(function (e) {
+      showPlainText("불러오기 실패: " + e.message);
+    });
+  }
+
   function openDetailCloud(job, name) {
     detailTitle.textContent = name;
     detailBody.classList.remove("plain");
     showPlainText("불러오는 중...");
+    datePillsEl.classList.add("hidden");
+    datePillsEl.innerHTML = "";
     showScreen("detailScreen");
-    if (!CLOUD_JOBS[job]) {
+    var jc = CLOUD_JOBS[job];
+    if (!jc) {
       showPlainText("클라우드 모드에서는 지원되지 않는 작업입니다. 로컬 모드에서 이용하세요.");
       return;
     }
+    if (jc.resultDir && jc.dateFilePattern) {
+      // dart처럼 날짜별 이력을 지원하는 job — outputs/ 디렉토리를 나열해 날짜 pill을
+      // 만들고 최신 날짜를 기본으로 연다. 날짜별 파일이 아직 하나도 없으면(저장소 초기
+      // 상태) latest.md로 폴백.
+      listCloudDates(job).then(function (dates) {
+        if (dates.length) { loadDateContent(job, dates[0], dates); return; }
+        return fetchResult(job).then(function (text) { renderDetailContent(job, text); });
+      }).catch(function (e) {
+        showPlainText("불러오기 실패: " + e.message);
+      });
+      return;
+    }
     fetchResult(job).then(function (text) {
-      detailBody.classList.remove("plain");
-      if (job === "dart" || job === "ai_bids") {
-        detailBody.innerHTML = mdToHtml(text);
-      } else {
-        detailBody.innerHTML = "";
-        var iframe = document.createElement("iframe");
-        detailBody.appendChild(iframe);
-        iframe.srcdoc = text;
-      }
+      renderDetailContent(job, text);
     }).catch(function (e) {
       showPlainText("불러오기 실패: " + e.message);
     });
   }
 
   function openDetail(job, name) {
+    datePillsEl.classList.add("hidden");
+    datePillsEl.innerHTML = "";
     if (cfg().mode === "cloud") { openDetailCloud(job, name); return; }
     detailTitle.textContent = name;
     detailBody.classList.remove("plain");
